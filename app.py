@@ -7,260 +7,145 @@ from llama_index.core import VectorStoreIndex, SimpleDirectoryReader, Settings, 
 from llama_index.llms.groq import Groq
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 
-# --- LOGGING (Monitoramento de Pacientes/Usuários) ---
+# --- LOGGING CLÍNICO ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
-logger = logging.getLogger("MediSync_Tracker")
+logger = logging.getLogger("MediSync_Log")
 
-# 1. Configuração do Sistema
+# 1. Configuração
 nest_asyncio.apply()
+st.set_page_config(page_title="MediSync AI - Saúde Integrada", page_icon="🏥", layout="wide")
 
-st.set_page_config(
-    page_title="MediSync AI - Inteligência Clínica",
-    page_icon="🏥",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
-
-# --- VISUAL "CLINICAL CLEAN" (CSS) ---
+# --- VISUAL "CLINICAL CLEAN" (CSS Hospitalar) ---
 st.markdown("""
 <style>
-    /* Fonte Limpa e Moderna (Roboto/Lato) */
     @import url('https://fonts.googleapis.com/css2?family=Lato:wght@400;700&family=Roboto:wght@400;500&display=swap');
-
-    /* Fundo Geral Clean */
-    .stApp {
-        background-color: #f4f7f6;
-        font-family: 'Lato', sans-serif;
-    }
-
-    /* Barra Lateral (Sidebar) */
-    [data-testid="stSidebar"] {
-        background-color: #ffffff;
-        border-right: 1px solid #dfe6e9;
-    }
-
-    /* Títulos */
-    h1, h2, h3 {
-        font-family: 'Roboto', sans-serif !important;
-        color: #2d3436 !important;
-        font-weight: 700 !important;
-    }
     
-    /* Texto Comum */
-    p, label, li, .stMarkdown {
-        color: #636e72 !important;
-        font-size: 16px;
-    }
-
-    /* Botões (Verde Médico / Confiança) */
+    /* Ambiente Estéril/Clean */
+    .stApp { background-color: #f8f9fa; font-family: 'Lato', sans-serif; }
+    
+    /* Cabeçalhos */
+    h1, h2, h3 { font-family: 'Roboto', sans-serif !important; color: #2d3436 !important; font-weight: 700 !important; }
+    
+    /* Sidebar */
+    [data-testid="stSidebar"] { background-color: #ffffff; border-right: 1px solid #e1e4e8; }
+    
+    /* Botões (Verde Saúde) */
     .stButton > button {
-        background-color: #00b894;
-        color: white !important;
-        border: none;
-        border-radius: 30px; /* Botões redondos */
-        padding: 0.6rem 1.2rem;
-        font-weight: 600;
-        transition: all 0.3s ease;
-        box-shadow: 0 4px 6px rgba(0, 184, 148, 0.2);
-        width: 100%;
+        background-color: #00b894; color: white !important; border: none;
+        border-radius: 25px; padding: 0.6rem 1.2rem; font-weight: 600;
+        box-shadow: 0 2px 5px rgba(0, 184, 148, 0.2); width: 100%;
     }
+    .stButton > button:hover { background-color: #00a884; transform: translateY(-1px); }
 
-    .stButton > button:hover {
-        background-color: #00a884;
-        transform: translateY(-2px);
-        box-shadow: 0 6px 12px rgba(0, 184, 148, 0.3);
-    }
-
-    /* Inputs de Chat */
-    .stChatInput textarea {
-        background-color: #ffffff !important;
-        border: 1px solid #b2bec3 !important;
-        border-radius: 20px;
-        color: #2d3436 !important;
-    }
-    .stChatInput textarea:focus {
-        border-color: #00b894 !important;
-        box-shadow: 0 0 5px rgba(0, 184, 148, 0.5) !important;
-    }
-
-    /* Mensagens do Chat */
-    [data-testid="stChatMessage"] {
-        background-color: #ffffff;
-        border: 1px solid #dfe6e9;
-        border-radius: 15px;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-    }
+    /* Chat (Balões) */
+    [data-testid="stChatMessage"] { background-color: #ffffff; border: 1px solid #dfe6e9; border-radius: 15px; }
     
-    /* Destaque para a IA (Avatar) */
-    [data-testid="stChatMessage"] [data-testid="stImage"] {
-        background-color: #e3fdfd;
-        border: 2px solid #00b894;
-    }
-
-    /* Expander (Protocolos) */
-    .streamlit-expanderHeader {
-        background-color: #ffffff;
-        border: 1px solid #00b894;
-        border-radius: 8px;
-        color: #00b894 !important;
-        font-weight: bold;
-    }
+    /* Avatar da IA */
+    [data-testid="stChatMessage"] [data-testid="stImage"] { background-color: #e3fdfd; border: 2px solid #00b894; }
 </style>
 """, unsafe_allow_html=True)
 
-# 3. Credenciais (API Key)
+# 3. Autenticação
 api_key = st.secrets.get("GROQ_API_KEY") or os.environ.get("GROQ_API_KEY")
 if not api_key:
-    # Fallback para teste local se necessário, mas ideal é usar st.secrets
-    # Coloque sua chave aqui se rodar localmente e não tiver configurado secrets
-    api_key =  
-
+    st.error("⚠️ SISTEMA OFF-LINE: Configure a chave API nos Secrets.")
+    st.stop()
 os.environ["GROQ_API_KEY"] = api_key
 
-# 4. Engenharia de Prompt (Coração do Sistema)
+# 4. Protocolos de IA (Prompts)
 PROMPT_PROFISSIONAL = (
-    "ATUE COMO: Especialista Clínico Multidisciplinar Sênior (Médico/Enfermeiro/Psicólogo).\n"
-    "CONTEXTO: Análise de prontuários, exames e literatura médica.\n"
+    "ATUE COMO: Especialista Clínico Multidisciplinar (Enfermagem/Medicina/Psicologia).\n"
+    "CONTEXTO: Análise de prontuários, artigos científicos e exames.\n"
     "DIRETRIZES:\n"
-    "1. Use terminologia técnica precisa (CID-10, DSM-5, Farmacologia).\n"
-    "2. Cite referências exatas do texto fornecido.\n"
-    "3. Seja objetivo, focado em conduta clínica, diagnóstico diferencial e protocolos.\n"
-    "4. Mantenha tom acadêmico e formal.\n"
+    "1. Use terminologia técnica padrão (CID-10, DSM-5, NANDA, Terminologia Cirúrgica).\n"
+    "2. Seja direto, focado em diagnóstico diferencial, farmacologia e conduta clínica.\n"
+    "3. Cite valores de referência e evidências científicas encontradas no texto.\n"
     "---------------------\n"
-    "DOCUMENTOS CLÍNICOS: {context_str}\n"
-    "---------------------\n"
-    "SOLICITAÇÃO DO PROFISSIONAL: {query_str}\n"
+    "DADOS CLÍNICOS: {context_str}\n"
+    "QUERY PROFISSIONAL: {query_str}\n"
     "PARECER TÉCNICO:"
 )
 
 PROMPT_PACIENTE = (
-    "ATUE COMO: Um Profissional de Saúde Empático e Didático.\n"
-    "MISSÃO: Traduzir 'mediquês' para linguagem simples e acolhedora.\n"
+    "ATUE COMO: Um Profissional de Saúde Humanizado e Empático.\n"
+    "OBJETIVO: Explicar saúde de forma simples, sem causar pânico.\n"
     "DIRETRIZES:\n"
-    "1. Explique termos complexos com analogias simples.\n"
-    "2. Foque no cuidado, bem-estar e instruções claras.\n"
-    "3. Seja tranquilizador, mas realista baseando-se nos documentos.\n"
-    "4. NUNCA faça diagnósticos definitivos sem ressaltar a necessidade de consulta presencial.\n"
+    "1. Traduza termos técnicos para linguagem do dia a dia.\n"
+    "2. Foque no cuidado, prevenção e bem-estar.\n"
+    "3. Seja acolhedor. Se algo for grave, oriente buscar ajuda presencial com calma.\n"
+    "4. Use listas ou tópicos para facilitar a leitura.\n"
     "---------------------\n"
-    "INFORMAÇÕES DE SAÚDE: {context_str}\n"
-    "---------------------\n"
-    "DÚVIDA DO PACIENTE: {query_str}\n"
+    "INFORMAÇÕES: {context_str}\n"
+    "PERGUNTA DO PACIENTE: {query_str}\n"
     "RESPOSTA ACOLHEDORA:"
 )
 
-# 5. Carregar Modelos
+# 5. Carregar Motor
 @st.cache_resource
-def carregar_cerebro():
+def carregar_sistema():
     Settings.llm = Groq(model="llama-3.3-70b-versatile")
-    Settings.embed_model = HuggingFaceEmbedding(
-        model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
-    )
+    Settings.embed_model = HuggingFaceEmbedding(model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
     return True
 
-with st.spinner("Esterilizando ambiente e carregando módulos de IA..."):
-    carregar_cerebro()
+carregar_sistema()
 
-# 6. Sidebar (Triagem)
+# 6. Sidebar
 with st.sidebar:
-    st.markdown("### 🏥 TRIAGEM")
-    st.info("Sistema de Apoio à Decisão Clínica")
+    st.title("🏥 MediSync AI")
+    st.caption("Inteligência Clínica Avançada")
+    st.markdown("---")
     
     perfil = st.radio(
-        "QUEM ESTÁ ACESSANDO?",
+        "MODO DE OPERAÇÃO:",
         ["PROFISSIONAL DE SAÚDE", "PACIENTE / FAMILIAR"],
         index=0
     )
     
-    st.markdown("---")
-    st.markdown("### 📁 PRONTUÁRIO / EXAMES")
-    uploaded_files = st.file_uploader("Faça upload de PDFs ou TXT", accept_multiple_files=True)
+    st.info("Formatos aceitos: Prontuários, Exames (PDF/TXT), Bulas, Artigos.")
+    uploaded_files = st.file_uploader("Arquivo Médico", accept_multiple_files=True)
     
-    processar = st.button("🔍 ANALISAR DADOS CLÍNICOS")
-    
-    if st.button("🧹 NOVA CONSULTA"):
-        st.session_state.messages = []
-        st.rerun()
+    if uploaded_files and st.button("ANALISAR DADOS"):
+        with st.spinner("Processando dados vitais..."):
+            try:
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    for uploaded_file in uploaded_files:
+                        path = os.path.join(temp_dir, uploaded_file.name)
+                        with open(path, "wb") as f:
+                            f.write(uploaded_file.getbuffer())
+                    
+                    documents = SimpleDirectoryReader(temp_dir).load_data()
+                    st.session_state.index = VectorStoreIndex.from_documents(documents)
+                    st.session_state.loaded = True
+                    logger.info(f"UPLOAD: {len(uploaded_files)} docs médicos.")
+                st.success("✅ Prontuário Indexado.")
+            except Exception as e:
+                st.error(f"Erro: {e}")
 
-# 7. Processamento (RAG)
-if "query_engine" not in st.session_state:
-    st.session_state.query_engine = None
+# 7. Chat
+if "messages" not in st.session_state: st.session_state.messages = []
 
-if uploaded_files and processar:
-    with st.spinner("Analisando parâmetros fisiológicos e texto..."):
-        try:
-            with tempfile.TemporaryDirectory() as temp_dir:
-                for uploaded_file in uploaded_files:
-                    path = os.path.join(temp_dir, uploaded_file.name)
-                    with open(path, "wb") as f:
-                        f.write(uploaded_file.getbuffer())
-                
-                documents = SimpleDirectoryReader(temp_dir).load_data()
-                index = VectorStoreIndex.from_documents(documents)
-                
-                st.session_state.index_base = index
-                st.session_state.documents_loaded = True
-                logger.info(f"TRIAGEM: {len(uploaded_files)} documentos médicos processados.")
-                
-            st.success("✅ Prontuário Digital Indexado.")
-        except Exception as e:
-            st.error("Erro na leitura dos exames.")
-            logger.error(f"ERRO CLÍNICO: {e}")
+st.title("Prontuário Inteligente")
 
-# 8. Interface Principal
-st.title("MediSync AI")
-st.markdown("##### ASSISTENTE DE SAÚDE INTEGRADA")
+for msg in st.session_state.messages:
+    with st.chat_message(msg["role"]): st.markdown(msg["content"])
 
-# Área de Ajuda (Expander)
-with st.expander("📋 PROTOCOLO DE USO (LEIA COM ATENÇÃO)"):
-    st.markdown("""
-    **Este sistema utiliza IA Avançada para leitura de documentos de saúde.**
-    
-    1. **Profissionais (Médicos, Enfermagem, Psicologia, Fono, etc):**
-       - Receberão análises técnicas, sugestões de conduta baseadas em evidências e correlações clínicas.
-    2. **Pacientes:**
-       - Receberão explicações didáticas sobre laudos, bulas e orientações de cuidado.
-    
-    *⚠️ Importante: Esta ferramenta é um suporte. Jamais substitui o julgamento clínico ou consulta presencial.*
-    """)
-
-# Chat
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
-
-if prompt := st.chat_input("Digite a queixa clínica ou dúvida..."):
-    
-    if not st.session_state.get("documents_loaded"):
-        st.warning("⚠️ POR FAVOR: Anexe os documentos clínicos na barra lateral primeiro.")
+if prompt := st.chat_input("Digite a dúvida clínica ou queixa..."):
+    if not st.session_state.get("loaded"):
+        st.warning("⚠️ Por favor, anexe o caso clínico na barra lateral.")
         st.stop()
 
     st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user"):
-        st.markdown(prompt)
+    with st.chat_message("user"): st.markdown(prompt)
     
-    logger.info(f"CONSULTA [{perfil}]: {prompt}")
-
     with st.chat_message("assistant"):
-        with st.spinner("Gerando parecer clínico..."):
+        with st.spinner("Analisando evidências..."):
             try:
-                if perfil == "PROFISSIONAL DE SAÚDE":
-                    template = PromptTemplate(PROMPT_PROFISSIONAL)
-                else:
-                    template = PromptTemplate(PROMPT_PACIENTE)
+                template = PromptTemplate(PROMPT_PROFISSIONAL if perfil == "PROFISSIONAL DE SAÚDE" else PROMPT_PACIENTE)
+                engine = st.session_state.index.as_query_engine(text_qa_template=template, similarity_top_k=5)
                 
-                query_engine = st.session_state.index_base.as_query_engine(
-                    text_qa_template=template,
-                    similarity_top_k=5
-                )
-                
-                response = query_engine.query(prompt)
+                response = engine.query(prompt)
                 st.markdown(str(response))
                 st.session_state.messages.append({"role": "assistant", "content": str(response)})
-                logger.info("PARECER FINALIZADO.")
-                
+                logger.info(f"CONSULTA [{perfil}]: Respondida.")
             except Exception as e:
-                st.error("Erro ao processar solicitação.")
-                logger.error(f"FALHA NA RESPOSTA: {e}")
+                st.error("Erro na análise clínica.")
